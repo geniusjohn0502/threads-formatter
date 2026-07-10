@@ -1,0 +1,436 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>脆排版器</title>
+<style>
+  :root{
+    --bg:#f4f1ec;
+    --card:#ffffff;
+    --ink:#2b2622;
+    --muted:#8a817a;
+    --line:#e6e0d8;
+    --accent:#b07a4f;
+    --accent-d:#945f37;
+    --ok:#3f8f5b;
+    --warn:#c2462f;
+    --shadow:0 6px 24px rgba(60,45,30,.08);
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0;}
+  body{
+    background:var(--bg);
+    color:var(--ink);
+    font-family:-apple-system,BlinkMacSystemFont,"PingFang TC","Noto Sans TC","Segoe UI",sans-serif;
+    line-height:1.6;
+    -webkit-font-smoothing:antialiased;
+  }
+  .wrap{max-width:1100px;margin:0 auto;padding:24px 20px 60px;}
+  header.top{display:flex;align-items:baseline;gap:12px;flex-wrap:wrap;margin-bottom:6px;}
+  header.top h1{font-size:22px;margin:0;letter-spacing:.5px;}
+  header.top .sub{color:var(--muted);font-size:13px;}
+
+  .toolbar{
+    display:flex;align-items:center;gap:14px;flex-wrap:wrap;
+    background:var(--card);border:1px solid var(--line);border-radius:14px;
+    padding:12px 16px;margin:14px 0 18px;box-shadow:var(--shadow);
+  }
+  .switch{display:flex;align-items:center;gap:9px;cursor:pointer;user-select:none;font-size:14px;}
+  .switch input{display:none;}
+  .track{width:42px;height:24px;border-radius:999px;background:#d8d0c6;position:relative;transition:.2s;flex:none;}
+  .track::after{content:"";position:absolute;top:3px;left:3px;width:18px;height:18px;border-radius:50%;background:#fff;transition:.2s;box-shadow:0 1px 3px rgba(0,0,0,.2);}
+  .switch input:checked + .track{background:var(--accent);}
+  .switch input:checked + .track::after{transform:translateX(18px);}
+  .switch .hint{color:var(--muted);font-size:12px;}
+  .spacer{flex:1;}
+  button.act{
+    border:none;border-radius:10px;padding:10px 18px;font-size:14px;font-weight:600;
+    cursor:pointer;transition:.15s;font-family:inherit;
+  }
+  button.ghost{background:transparent;color:var(--muted);border:1px solid var(--line);}
+  button.ghost:hover{color:var(--ink);border-color:var(--muted);}
+
+  .panes{display:grid;grid-template-columns:1fr 1fr;gap:18px;align-items:start;}
+  @media(max-width:760px){.panes{grid-template-columns:1fr;}}
+
+  .pane{
+    background:var(--card);border:1px solid var(--line);border-radius:14px;
+    box-shadow:var(--shadow);overflow:hidden;display:flex;flex-direction:column;
+  }
+  .pane .ph{
+    display:flex;align-items:center;justify-content:space-between;
+    padding:11px 16px;border-bottom:1px solid var(--line);
+    background:var(--card);
+  }
+  .pane .ph .label{font-size:13px;font-weight:600;color:var(--muted);letter-spacing:.5px;}
+  .pane .ph .sublabel{font-size:12px;color:var(--muted);}
+
+  /* ─── 左側：串文編輯清單 ─── */
+  .threads-list{display:flex;flex-direction:column;}
+
+  .thread-item{border-bottom:1px solid var(--line);}
+  .thread-item:last-child{border-bottom:none;}
+
+  .item-header{
+    display:flex;align-items:center;gap:8px;
+    padding:10px 14px 4px;
+  }
+  .item-label{
+    font-size:12px;font-weight:700;color:var(--accent);
+    letter-spacing:.5px;flex:1;
+  }
+  .item-count{font-size:12px;color:var(--muted);font-variant-numeric:tabular-nums;}
+  .item-count.over{color:var(--warn);font-weight:700;}
+
+  button.copy-one{
+    border:none;border-radius:7px;padding:4px 11px;font-size:12px;font-weight:600;
+    cursor:pointer;font-family:inherit;transition:.15s;
+    background:var(--accent);color:#fff;
+  }
+  button.copy-one:hover{background:var(--accent-d);}
+  button.copy-one.copied{background:var(--ok);}
+
+  button.del-btn{
+    border:none;background:transparent;cursor:pointer;color:var(--muted);
+    font-size:15px;padding:2px 5px;line-height:1;border-radius:5px;transition:.15s;
+  }
+  button.del-btn:hover{color:var(--warn);background:#fef2f0;}
+
+  .thread-item textarea{
+    width:100%;border:none;outline:none;resize:vertical;
+    padding:6px 14px 14px;font-size:15px;line-height:1.75;color:var(--ink);
+    font-family:inherit;background:transparent;min-height:240px;display:block;
+  }
+  .thread-item textarea::placeholder{color:#c3bab0;}
+
+  .add-bar{padding:12px 14px;border-top:1px solid var(--line);}
+  button.add-btn{
+    border:1.5px dashed var(--line);background:transparent;border-radius:10px;
+    padding:9px 16px;font-size:13px;font-weight:600;color:var(--muted);
+    cursor:pointer;font-family:inherit;width:100%;transition:.15s;
+  }
+  button.add-btn:hover{border-color:var(--accent);color:var(--accent);background:#fdf6f0;}
+
+  /* ─── 右側：串文預覽 ─── */
+  .preview-scroll{padding:20px 18px;overflow:auto;background:#faf8f4;}
+
+  .preview-item{display:flex;gap:12px;}
+  .avatar-col{display:flex;flex-direction:column;align-items:center;flex:none;width:36px;}
+  .avatar{
+    width:36px;height:36px;border-radius:50%;flex:none;
+    background:linear-gradient(135deg,var(--accent),#d9a877);
+  }
+  .connector{width:2px;background:var(--line);flex:1;min-height:14px;margin:4px 0;}
+  .preview-item:last-child .connector{display:none;}
+
+  .content-col{flex:1;padding-bottom:16px;}
+  .preview-item:last-child .content-col{padding-bottom:4px;}
+  .who{font-size:14px;font-weight:600;margin-bottom:3px;}
+  .who span{font-size:11.5px;color:var(--muted);font-weight:400;margin-left:6px;}
+  .thread-body{white-space:pre-wrap;word-break:break-word;font-size:15px;line-height:1.7;}
+  .thread-body.empty{color:#c3bab0;font-style:italic;}
+
+  .foot{margin-top:16px;color:var(--muted);font-size:12.5px;text-align:center;line-height:1.7;}
+  .toast{
+    position:fixed;left:50%;bottom:34px;transform:translateX(-50%) translateY(20px);
+    background:var(--ink);color:#fff;padding:11px 20px;border-radius:999px;font-size:14px;
+    opacity:0;pointer-events:none;transition:.25s;box-shadow:0 8px 24px rgba(0,0,0,.25);z-index:50;
+  }
+  .toast.show{opacity:1;transform:translateX(-50%) translateY(0);}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header class="top">
+    <h1>🧵 脆排版器</h1>
+    <span class="sub">貼草稿 → 改 → 一鍵複製貼到脆</span>
+  </header>
+
+  <div class="toolbar">
+    <label class="switch" title="開啟後，會在空白行塞入看不見的字元，防止脆把段落間距吃掉">
+      <input type="checkbox" id="keepBlank" checked>
+      <span class="track"></span>
+      <span>保留空白行 <span class="hint">（防脆吃掉段落間距）</span></span>
+    </label>
+    <div class="spacer"></div>
+    <button class="act ghost" id="copyAllBtn">複製全文（貼 FB 用）</button>
+    <button class="act ghost" id="clearBtn">清空全部</button>
+  </div>
+
+  <div class="panes">
+    <div class="pane">
+      <div class="ph">
+        <span class="label">編輯</span>
+        <span class="sublabel">每篇上限 500 字</span>
+      </div>
+      <div class="threads-list" id="threadsList"></div>
+      <div class="add-bar">
+        <button class="add-btn" id="addBtn">＋ 新增串文</button>
+      </div>
+    </div>
+
+    <div class="pane">
+      <div class="ph">
+        <span class="label">脆預覽</span>
+        <span class="sublabel">即時更新</span>
+      </div>
+      <div class="preview-scroll" id="previewScroll"></div>
+    </div>
+  </div>
+
+  <div class="foot">
+    全部存在你自己的電腦，不上雲端 · 內容自動暫存，不小心關掉再打開還在<br>
+    每篇串文各自點「複製」，依序貼到脆
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+(function(){
+  var FILLER = "⠀"; // U+2800 點字空白，脆不會吃掉
+  var LIMIT = 500;
+  var STORE_V2 = 'threads_formatter_v2';
+  var STORE_V1 = 'threads_formatter_v1';
+
+  var keepBlank    = document.getElementById('keepBlank');
+  var threadsList  = document.getElementById('threadsList');
+  var previewScroll= document.getElementById('previewScroll');
+  var addBtn       = document.getElementById('addBtn');
+  var clearBtn     = document.getElementById('clearBtn');
+  var toast        = document.getElementById('toast');
+  var toastTimer;
+
+  var threads = ['']; // string[]
+
+  // ── 暫存 ──
+  function save(){
+    try{ localStorage.setItem(STORE_V2, JSON.stringify({threads:threads, k:keepBlank.checked})); }catch(e){}
+  }
+  function load(){
+    try{
+      var raw = localStorage.getItem(STORE_V2);
+      if(raw){
+        var d = JSON.parse(raw);
+        if(Array.isArray(d.threads) && d.threads.length) threads = d.threads;
+        if(typeof d.k === 'boolean') keepBlank.checked = d.k;
+        return;
+      }
+      // 舊版本遷移
+      var old = localStorage.getItem(STORE_V1);
+      if(old){
+        var o = JSON.parse(old);
+        threads = [o.t||''];
+        if(typeof o.k === 'boolean') keepBlank.checked = o.k;
+      }
+    }catch(e){}
+  }
+
+  // ── 轉換 ──
+  function buildOutput(text){
+    if(!keepBlank.checked) return text;
+    return text.split('\n').map(function(l){ return l.trim()===''?FILLER:l; }).join('\n');
+  }
+  function buildPreviewText(text){
+    if(keepBlank.checked) return text;
+    return text.replace(/\n{2,}/g, '\n');
+  }
+
+  // ── 渲染左側編輯區（初始 / 新增 / 刪除時呼叫，不在打字時呼叫以免失焦） ──
+  function renderEditors(){
+    threadsList.innerHTML = '';
+    threads.forEach(function(text, i){
+      var item = document.createElement('div');
+      item.className = 'thread-item';
+
+      var hdr = document.createElement('div');
+      hdr.className = 'item-header';
+
+      var lbl = document.createElement('span');
+      lbl.className = 'item-label';
+      lbl.textContent = '串文 ' + (i+1);
+
+      var cnt = document.createElement('span');
+      cnt.className = 'item-count' + (text.length > LIMIT ? ' over' : '');
+      cnt.id = 'cnt-' + i;
+      cnt.textContent = text.length + ' / ' + LIMIT;
+
+      var cpBtn = document.createElement('button');
+      cpBtn.className = 'copy-one';
+      cpBtn.textContent = '複製';
+      cpBtn.title = '複製串文 ' + (i+1);
+      cpBtn.onclick = (function(idx, btn){ return function(){ copyThread(idx, btn); }; })(i, cpBtn);
+
+      var dlBtn = document.createElement('button');
+      dlBtn.className = 'del-btn';
+      dlBtn.innerHTML = '&#10005;';
+      dlBtn.title = '刪除串文 ' + (i+1);
+      dlBtn.style.display = threads.length === 1 ? 'none' : '';
+      dlBtn.onclick = (function(idx){ return function(){ deleteThread(idx); }; })(i);
+
+      hdr.appendChild(lbl);
+      hdr.appendChild(cnt);
+      hdr.appendChild(cpBtn);
+      hdr.appendChild(dlBtn);
+
+      var ta = document.createElement('textarea');
+      ta.value = text;
+      ta.placeholder = i === 0
+        ? '把 Claude 給的草稿貼進來，直接在這裡改…\n\n段落之間留空白行，點「複製」就會自動幫你保留間距。'
+        : '接續串文 ' + (i+1) + '…';
+      ta.oninput = (function(idx){ return function(){ onTextChange(idx, this.value); }; })(i);
+
+      item.appendChild(hdr);
+      item.appendChild(ta);
+      threadsList.appendChild(item);
+    });
+  }
+
+  // ── 渲染右側預覽（隨時呼叫，不影響左側焦點） ──
+  function renderPreview(){
+    previewScroll.innerHTML = '';
+    threads.forEach(function(text, i){
+      var item = document.createElement('div');
+      item.className = 'preview-item';
+
+      var aCol = document.createElement('div');
+      aCol.className = 'avatar-col';
+      var av = document.createElement('div');
+      av.className = 'avatar';
+      var conn = document.createElement('div');
+      conn.className = 'connector';
+      aCol.appendChild(av);
+      aCol.appendChild(conn);
+
+      var cCol = document.createElement('div');
+      cCol.className = 'content-col';
+
+      var who = document.createElement('div');
+      who.className = 'who';
+      who.innerHTML = '你的脆帳號<span>現在 · 公開</span>';
+
+      var body = document.createElement('div');
+      body.className = 'thread-body';
+      if(text.trim() === ''){
+        body.textContent = '（串文 ' + (i+1) + ' 尚未輸入內容）';
+        body.classList.add('empty');
+      }else{
+        body.textContent = buildPreviewText(text);
+      }
+
+      cCol.appendChild(who);
+      cCol.appendChild(body);
+      item.appendChild(aCol);
+      item.appendChild(cCol);
+      previewScroll.appendChild(item);
+    });
+  }
+
+  // ── 打字時：只更新字數 + 重繪預覽，不重建 textarea ──
+  function onTextChange(idx, val){
+    threads[idx] = val;
+    var cnt = document.getElementById('cnt-' + idx);
+    if(cnt){
+      cnt.textContent = val.length + ' / ' + LIMIT;
+      cnt.className = 'item-count' + (val.length > LIMIT ? ' over' : '');
+    }
+    renderPreview();
+    save();
+  }
+
+  function deleteThread(idx){
+    if(threads.length <= 1) return;
+    threads.splice(idx, 1);
+    renderEditors();
+    renderPreview();
+    save();
+  }
+
+  function addThread(){
+    threads.push('');
+    renderEditors();
+    renderPreview();
+    save();
+    setTimeout(function(){
+      var items = threadsList.querySelectorAll('.thread-item');
+      var last = items[items.length-1];
+      if(last){
+        last.scrollIntoView({behavior:'smooth', block:'nearest'});
+        var ta = last.querySelector('textarea');
+        if(ta) ta.focus();
+      }
+    }, 60);
+  }
+
+  function copyThread(idx, btn){
+    var out = buildOutput(threads[idx]);
+    if(threads[idx].trim() === ''){
+      showToast('串文 ' + (idx+1) + ' 還沒有內容喔', true);
+      return;
+    }
+    function done(){
+      showToast('串文 ' + (idx+1) + ' 已複製，切到脆貼上 ✅', false);
+      btn.textContent = '已複製 ✓';
+      btn.classList.add('copied');
+      setTimeout(function(){ btn.textContent = '複製'; btn.classList.remove('copied'); }, 2200);
+    }
+    if(navigator.clipboard && navigator.clipboard.writeText){
+      navigator.clipboard.writeText(out).then(done).catch(function(){ fallbackCopy(out, done); });
+    }else{
+      fallbackCopy(out, done);
+    }
+  }
+
+  function fallbackCopy(text, done){
+    var ta = document.createElement('textarea');
+    ta.value = text;
+    ta.style.position='fixed'; ta.style.opacity='0';
+    document.body.appendChild(ta);
+    ta.select();
+    try{ document.execCommand('copy'); done(); }
+    catch(e){ showToast('複製失敗，請手動選取', true); }
+    document.body.removeChild(ta);
+  }
+
+  function showToast(msg, isWarn){
+    toast.textContent = msg;
+    toast.style.background = isWarn ? '#c2462f' : '#2b2622';
+    toast.classList.add('show');
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(function(){ toast.classList.remove('show'); }, 2200);
+  }
+
+  document.getElementById('copyAllBtn').addEventListener('click', function(){
+    var nonEmpty = threads.filter(function(t){ return t.trim() !== ''; });
+    if(nonEmpty.length === 0){ showToast('還沒有任何內容可以複製喔', true); return; }
+    var sep = '\n' + FILLER + '\n';
+    var out = nonEmpty.map(function(t){ return buildOutput(t); }).join(sep);
+    function done(){ showToast('全文已複製，切到 FB 貼上 ✅', false); }
+    if(navigator.clipboard && navigator.clipboard.writeText){
+      navigator.clipboard.writeText(out).then(done).catch(function(){ fallbackCopy(out, done); });
+    }else{
+      fallbackCopy(out, done);
+    }
+  });
+
+  addBtn.addEventListener('click', addThread);
+
+  clearBtn.addEventListener('click', function(){
+    var hasContent = threads.some(function(t){ return t.trim() !== ''; });
+    if(hasContent && !confirm('確定要清空所有串文嗎？')) return;
+    threads = [''];
+    renderEditors();
+    renderPreview();
+    save();
+  });
+
+  keepBlank.addEventListener('change', function(){ renderPreview(); save(); });
+
+  load();
+  renderEditors();
+  renderPreview();
+})();
+</script>
+</body>
+</html>
