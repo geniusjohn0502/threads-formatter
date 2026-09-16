@@ -30,6 +30,15 @@
   header.top{display:flex;align-items:baseline;gap:12px;flex-wrap:wrap;margin-bottom:6px;}
   header.top h1{font-size:22px;margin:0;letter-spacing:.5px;}
   header.top .sub{color:var(--muted);font-size:13px;}
+  header.top .byline{
+    margin-left:auto;align-self:center;
+    font-size:13px;color:var(--muted);text-decoration:none;
+    background:var(--card);border:1px solid var(--line);border-radius:999px;
+    padding:6px 14px;transition:.15s;white-space:nowrap;
+  }
+  header.top .byline strong{color:var(--ink);}
+  header.top .byline .handle{color:var(--accent);font-weight:600;}
+  header.top .byline:hover{border-color:var(--accent);background:#fdf6f0;}
 
   .toolbar{
     display:flex;align-items:center;gap:14px;flex-wrap:wrap;
@@ -153,6 +162,9 @@
   <header class="top">
     <h1>🧵 脆排版器</h1>
     <span class="sub">貼草稿 → 改 → 一鍵複製貼到脆</span>
+    <a class="byline" href="https://www.threads.com/@more__choice" target="_blank" rel="noopener">
+      由 <strong>灰哥</strong> 製作 · <span class="handle">@more__choice</span> ↗
+    </a>
   </header>
 
   <div class="toolbar">
