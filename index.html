@@ -100,6 +100,13 @@
   button.copy-one:hover{background:var(--accent-d);}
   button.copy-one.copied{background:var(--ok);}
 
+  button.split-btn{
+    border:1px solid var(--warn);border-radius:7px;padding:3px 10px;font-size:12px;font-weight:600;
+    cursor:pointer;font-family:inherit;transition:.15s;
+    background:#fff;color:var(--warn);
+  }
+  button.split-btn:hover{background:#fef2f0;}
+
   button.del-btn{
     border:none;background:transparent;cursor:pointer;color:var(--muted);
     font-size:15px;padding:2px 5px;line-height:1;border-radius:5px;transition:.15s;
@@ -278,9 +285,15 @@
       lbl.textContent = '串文 ' + (i+1);
 
       var cnt = document.createElement('span');
-      cnt.className = 'item-count' + (text.length > LIMIT ? ' over' : '');
       cnt.id = 'cnt-' + i;
-      cnt.textContent = text.length + ' / ' + LIMIT;
+      cnt.title = '實際複製出去的字數（空白行也算）';
+
+      var spBtn = document.createElement('button');
+      spBtn.className = 'split-btn';
+      spBtn.id = 'split-' + i;
+      spBtn.textContent = '自動分段';
+      spBtn.title = '照段落切成好幾篇，每篇 500 字內';
+      spBtn.onclick = (function(idx){ return function(){ splitThread(idx); }; })(i);
 
       var cpBtn = document.createElement('button');
       cpBtn.className = 'copy-one';
@@ -297,6 +310,7 @@
 
       hdr.appendChild(lbl);
       hdr.appendChild(cnt);
+      hdr.appendChild(spBtn);
       hdr.appendChild(cpBtn);
       hdr.appendChild(dlBtn);
 
@@ -310,7 +324,20 @@
       item.appendChild(hdr);
       item.appendChild(ta);
       threadsList.appendChild(item);
+      updateCount(i);
     });
+  }
+
+  // ── 字數：算「實際複製出去的字數」，保留空白行時每個空白行也算 1 字 ──
+  function updateCount(idx){
+    var len = outLen(threads[idx]);
+    var cnt = document.getElementById('cnt-' + idx);
+    if(cnt){
+      cnt.textContent = len + ' / ' + LIMIT;
+      cnt.className = 'item-count' + (len > LIMIT ? ' over' : '');
+    }
+    var sp = document.getElementById('split-' + idx);
+    if(sp) sp.style.display = len > LIMIT ? '' : 'none';
   }
 
   // ── 渲染右側預覽（隨時呼叫，不影響左側焦點） ──
@@ -356,13 +383,52 @@
   // ── 打字時：只更新字數 + 重繪預覽，不重建 textarea ──
   function onTextChange(idx, val){
     threads[idx] = val;
-    var cnt = document.getElementById('cnt-' + idx);
-    if(cnt){
-      cnt.textContent = val.length + ' / ' + LIMIT;
-      cnt.className = 'item-count' + (val.length > LIMIT ? ' over' : '');
-    }
+    updateCount(idx);
     renderPreview();
     save();
+  }
+
+  // ── 自動分段：脆遇到超過 500 字的貼上會自己切段，還會把換行吃掉，所以先在這裡切好 ──
+  // 優先照段落切，一段太長再照行、照句子，最後才硬切；長度以「實際複製出去的字數」計算
+  function outLen(s){ return buildOutput(s).length; }
+
+  function splitText(text){
+    var chunks = [], cur = '';
+    function push(){
+      var t = cur.replace(/^\n+|\n+$/g, '');
+      if(t.trim() !== '') chunks.push(t);
+      cur = '';
+    }
+    function breakDown(piece, level){
+      if(level === 0) return piece.split('\n');
+      if(level === 1) return piece.match(/[^。！？!?；;]+[。！？!?；;」』）)]*|[。！？!?；;]+/g) || [piece];
+      return Array.from(piece);
+    }
+    // level：0 段落、1 行、2 句子、3 單字
+    function feed(piece, level, sep){
+      var next = cur ? cur + sep + piece : piece;
+      if(outLen(next) <= LIMIT){ cur = next; return; }
+      if(outLen(piece) <= LIMIT || level >= 3){ push(); cur = piece; return; }
+      var parts = breakDown(piece, level);
+      if(parts.length <= 1){ feed(piece, level + 1, sep); return; }
+      var innerSep = level === 0 ? '\n' : '';
+      parts.forEach(function(p, j){ feed(p, level + 1, j === 0 ? sep : innerSep); });
+    }
+    text.replace(/\r\n?/g, '\n')
+        .split(/\n(?:[ \t　⠀]*\n)+/)
+        .forEach(function(para){ feed(para, 0, '\n\n'); });
+    push();
+    return chunks;
+  }
+
+  function splitThread(idx){
+    var chunks = splitText(threads[idx]);
+    if(chunks.length < 2){ showToast('這篇不用分段', true); return; }
+    threads.splice.apply(threads, [idx, 1].concat(chunks));
+    renderEditors();
+    renderPreview();
+    save();
+    showToast('已分成 ' + chunks.length + ' 篇，每篇依序複製貼到脆 ✅', false);
   }
 
   function deleteThread(idx){
@@ -451,7 +517,11 @@
     save();
   });
 
-  keepBlank.addEventListener('change', function(){ renderPreview(); save(); });
+  keepBlank.addEventListener('change', function(){
+    threads.forEach(function(_, i){ updateCount(i); });
+    renderPreview();
+    save();
+  });
 
   load();
   renderEditors();
