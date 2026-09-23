@@ -75,6 +75,17 @@
   .pane .ph .label{font-size:13px;font-weight:600;color:var(--muted);letter-spacing:.5px;}
   .pane .ph .sublabel{font-size:12px;color:var(--muted);}
 
+  /* 手機字級切換（小／中／大） */
+  .size-seg{display:flex;align-items:center;gap:6px;}
+  .size-seg .seg-label{font-size:12px;color:var(--muted);}
+  .size-seg button.seg{
+    border:1px solid var(--line);background:transparent;color:var(--muted);
+    font-family:inherit;font-size:12px;line-height:1;cursor:pointer;
+    padding:5px 9px;border-radius:7px;transition:.15s;
+  }
+  .size-seg button.seg:hover{border-color:var(--accent);color:var(--accent);}
+  .size-seg button.seg.on{background:var(--accent);border-color:var(--accent);color:#fff;font-weight:600;}
+
   /* ─── 左側：串文編輯清單 ─── */
   .threads-list{display:flex;flex-direction:column;}
 
@@ -130,6 +141,8 @@
 
   /* ─── 右側：串文預覽 ─── */
   .preview-scroll{padding:20px 18px;overflow:auto;background:#faf8f4;}
+  /* 手機上留白縮小，預覽字級才不會被壓太小 */
+  @media(max-width:760px){.preview-scroll{padding:16px 10px;}}
 
   .preview-item{display:flex;gap:12px;}
   .avatar-col{display:flex;flex-direction:column;align-items:center;flex:none;width:36px;}
@@ -140,7 +153,11 @@
   .connector{width:2px;background:var(--line);flex:1;min-height:14px;margin:4px 0;}
   .preview-item:last-child .connector{display:none;}
 
-  .content-col{flex:1;padding-bottom:16px;}
+  .content-col{flex:1;padding-bottom:16px;min-width:0;}
+  /* 換行模擬：文字欄寬度與字級由 JS 換算，讓一行的字數跟脆一樣 */
+  .preview-scroll[data-sim] .content-col{flex:none;width:var(--pv-w);}
+  .preview-scroll[data-sim] .thread-body{font-size:var(--pv-f);}
+  .preview-scroll[data-sim] .who{font-size:calc(var(--pv-f) * .93);}
   .preview-item:last-child .content-col{padding-bottom:4px;}
   .who{font-size:14px;font-weight:600;margin-bottom:3px;}
   .who span{font-size:11.5px;color:var(--muted);font-weight:400;margin-left:6px;}
@@ -200,7 +217,12 @@
     <div class="pane">
       <div class="ph">
         <span class="label">脆預覽</span>
-        <span class="sublabel">即時更新</span>
+        <span class="size-seg" title="選跟你手機一樣的文字大小（手機「設定 → 螢幕顯示與亮度 → 文字大小」），換行位置才會一致">
+          <span class="seg-label">手機字級</span>
+          <button type="button" class="seg" data-size="s">小</button>
+          <button type="button" class="seg" data-size="m">中</button>
+          <button type="button" class="seg" data-size="l">大</button>
+        </span>
       </div>
       <div class="preview-scroll" id="previewScroll"></div>
     </div>
@@ -236,10 +258,11 @@
   var toastTimer;
 
   var threads = ['']; // string[]
+  var simSize = 'm';  // 手機字級：s／m／l
 
   // ── 暫存 ──
   function save(){
-    try{ localStorage.setItem(STORE_V2, JSON.stringify({threads:threads, k:keepBlank.checked})); }catch(e){}
+    try{ localStorage.setItem(STORE_V2, JSON.stringify({threads:threads, k:keepBlank.checked, s:simSize})); }catch(e){}
   }
   function load(){
     try{
@@ -248,6 +271,7 @@
         var d = JSON.parse(raw);
         if(Array.isArray(d.threads) && d.threads.length) threads = d.threads;
         if(typeof d.k === 'boolean') keepBlank.checked = d.k;
+        if(d.s === 's' || d.s === 'm' || d.s === 'l') simSize = d.s;
         return;
       }
       // 舊版本遷移
@@ -340,6 +364,44 @@
     if(sp) sp.style.display = len > LIMIT ? '' : 'none';
   }
 
+  // ── 換行模擬 ──
+  // 脆在手機上的文字欄，大約是「螢幕寬 - 76」（扣掉頭像與左右留白），字級約 15px。
+  // 預覽區比那窄，一行放的字比較少，換行位置就對不起來。
+  // 解法：把預覽的字級照寬度比例縮放，一行的字數就會跟脆一致。
+  // 手機的文字大小可以自己調，調大一行就放得下比較少字。
+  // 這三個值是脆在「小／中／大」三種設定下的字級（估算），中＝iPhone 預設。
+  var SIM_FONTS = { s: 13.5, m: 15, l: 17 };
+  var SIM_SIDE = 76;          // 脆左右扣掉的寬度（頭像＋留白，估算）
+  var SIM_MAXW = 430;         // 超過這個寬度就當成手機最寬的情況
+
+  function syncPreviewWidth(){
+    // 先取消模擬，量出預覽文字欄「原本」有多寬（自動跟著留白、頭像欄變動）
+    previewScroll.removeAttribute('data-sim');
+    var col = previewScroll.querySelector('.content-col');
+    var avail = col ? col.getBoundingClientRect().width : 0;
+    if(avail <= 0) return;
+    var target = Math.min(window.innerWidth, SIM_MAXW) - SIM_SIDE;
+    if(target <= 0) return;
+    var w = Math.min(avail, target);
+    var simFont = SIM_FONTS[simSize] || SIM_FONTS.m;
+    previewScroll.setAttribute('data-sim', '');
+    previewScroll.style.setProperty('--pv-w', w + 'px');
+    previewScroll.style.setProperty('--pv-f', (simFont * w / target) + 'px');
+  }
+  window.addEventListener('resize', syncPreviewWidth);
+
+  function setSimSize(size){
+    simSize = SIM_FONTS[size] ? size : 'm';
+    [].forEach.call(document.querySelectorAll('.size-seg .seg'), function(b){
+      b.classList.toggle('on', b.getAttribute('data-size') === simSize);
+    });
+    syncPreviewWidth();
+    save();
+  }
+  [].forEach.call(document.querySelectorAll('.size-seg .seg'), function(b){
+    b.addEventListener('click', function(){ setSimSize(b.getAttribute('data-size')); });
+  });
+
   // ── 渲染右側預覽（隨時呼叫，不影響左側焦點） ──
   function renderPreview(){
     previewScroll.innerHTML = '';
@@ -378,6 +440,7 @@
       item.appendChild(cCol);
       previewScroll.appendChild(item);
     });
+    syncPreviewWidth();
   }
 
   // ── 打字時：只更新字數 + 重繪預覽，不重建 textarea ──
@@ -524,6 +587,7 @@
   });
 
   load();
+  setSimSize(simSize);
   renderEditors();
   renderPreview();
 })();
