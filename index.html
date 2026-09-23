@@ -84,7 +84,30 @@
     padding:5px 9px;border-radius:7px;transition:.15s;
   }
   .size-seg button.seg:hover{border-color:var(--accent);color:var(--accent);}
-  .size-seg button.seg.on{background:var(--accent);border-color:var(--accent);color:#fff;font-weight:600;}
+  .size-seg .seg-num{
+    font-size:12px;font-weight:700;color:var(--accent);
+    min-width:52px;text-align:right;font-variant-numeric:tabular-nums;
+  }
+  .size-seg input[type=range]{
+    -webkit-appearance:none;appearance:none;background:transparent;
+    width:110px;height:18px;cursor:pointer;margin:0;
+  }
+  .size-seg input[type=range]::-webkit-slider-runnable-track{
+    height:4px;border-radius:999px;background:var(--line);
+  }
+  .size-seg input[type=range]::-webkit-slider-thumb{
+    -webkit-appearance:none;appearance:none;margin-top:-6px;
+    width:16px;height:16px;border-radius:50%;background:var(--accent);
+    border:2px solid #fff;box-shadow:0 1px 3px rgba(0,0,0,.25);
+  }
+  .size-seg input[type=range]::-moz-range-track{height:4px;border-radius:999px;background:var(--line);}
+  .size-seg input[type=range]::-moz-range-thumb{
+    width:14px;height:14px;border:2px solid #fff;border-radius:50%;background:var(--accent);
+  }
+  @media(max-width:760px){
+    .pane .ph{flex-wrap:wrap;gap:6px;}
+    .size-seg input[type=range]{width:130px;}
+  }
 
   /* ─── 左側：串文編輯清單 ─── */
   .threads-list{display:flex;flex-direction:column;}
@@ -217,11 +240,11 @@
     <div class="pane">
       <div class="ph">
         <span class="label">脆預覽</span>
-        <span class="size-seg" title="選跟你手機一樣的文字大小（手機「設定 → 螢幕顯示與亮度 → 文字大小」），換行位置才會一致">
-          <span class="seg-label">手機字級</span>
-          <button type="button" class="seg" data-size="s">小</button>
-          <button type="button" class="seg" data-size="m">中</button>
-          <button type="button" class="seg" data-size="l">大</button>
+        <span class="size-seg" title="拖到預覽的換行位置跟你手機上看到的一樣，之後就會記住">
+          <span class="seg-label">換行寬度</span>
+          <input type="range" id="cplRange" min="10" max="26" step="1" value="18"
+                 aria-label="調整預覽一行放幾個字">
+          <span class="seg-num" id="cplNum">18</span>
         </span>
       </div>
       <div class="preview-scroll" id="previewScroll"></div>
@@ -258,11 +281,11 @@
   var toastTimer;
 
   var threads = ['']; // string[]
-  var simSize = 'm';  // 手機字級：s／m／l
+  var cpl = 18;       // 預覽一行放幾個字（使用者自己調到跟手機一樣）
 
   // ── 暫存 ──
   function save(){
-    try{ localStorage.setItem(STORE_V2, JSON.stringify({threads:threads, k:keepBlank.checked, s:simSize})); }catch(e){}
+    try{ localStorage.setItem(STORE_V2, JSON.stringify({threads:threads, k:keepBlank.checked, n:cpl})); }catch(e){}
   }
   function load(){
     try{
@@ -271,7 +294,7 @@
         var d = JSON.parse(raw);
         if(Array.isArray(d.threads) && d.threads.length) threads = d.threads;
         if(typeof d.k === 'boolean') keepBlank.checked = d.k;
-        if(d.s === 's' || d.s === 'm' || d.s === 'l') simSize = d.s;
+        if(typeof d.n === 'number' && d.n >= 10 && d.n <= 26) cpl = Math.round(d.n);
         return;
       }
       // 舊版本遷移
@@ -365,14 +388,17 @@
   }
 
   // ── 換行模擬 ──
-  // 脆在手機上的文字欄，大約是「螢幕寬 - 76」（扣掉頭像與左右留白），字級約 15px。
-  // 預覽區比那窄，一行放的字比較少，換行位置就對不起來。
-  // 解法：把預覽的字級照寬度比例縮放，一行的字數就會跟脆一致。
-  // 手機的文字大小可以自己調，調大一行就放得下比較少字。
-  // 這三個值是脆在「小／中／大」三種設定下的字級（估算），中＝iPhone 預設。
-  var SIM_FONTS = { s: 13.5, m: 15, l: 17 };
-  var SIM_SIDE = 76;          // 脆左右扣掉的寬度（頭像＋留白，估算）
-  var SIM_MAXW = 430;         // 超過這個寬度就當成手機最寬的情況
+  // 每個人的手機寬度、系統文字大小、顯示縮放都不同，一行放得下幾個字差很多，
+  // 猜不準，所以直接讓使用者自己調「一行幾個字」。
+  // 中文字寬度約等於字級，所以把預覽字級設成「欄寬 ÷ 一行字數」，一行就會剛好放那麼多字。
+  var CPL_MIN = 10, CPL_MAX = 26;
+  var MAX_FONT = 17;          // 桌機上預覽字級的上限，太大反而難讀
+  // 手機上的數字、英文、標點比電腦上窄一些，所以每行多留一點餘裕，
+  // 換行位置才會跟手機一致。不到 1 個字，所以純中文的一行仍然剛好是設定的字數。
+  var CPL_SLACK = 0.3;
+
+  var cplNum   = document.getElementById('cplNum');
+  var cplRange = document.getElementById('cplRange');
 
   function syncPreviewWidth(){
     // 先取消模擬，量出預覽文字欄「原本」有多寬（自動跟著留白、頭像欄變動）
@@ -380,27 +406,22 @@
     var col = previewScroll.querySelector('.content-col');
     var avail = col ? col.getBoundingClientRect().width : 0;
     if(avail <= 0) return;
-    var target = Math.min(window.innerWidth, SIM_MAXW) - SIM_SIDE;
-    if(target <= 0) return;
-    var w = Math.min(avail, target);
-    var simFont = SIM_FONTS[simSize] || SIM_FONTS.m;
+    var slots = cpl + CPL_SLACK;
+    var w = Math.min(avail, slots * MAX_FONT);
     previewScroll.setAttribute('data-sim', '');
     previewScroll.style.setProperty('--pv-w', w + 'px');
-    previewScroll.style.setProperty('--pv-f', (simFont * w / target) + 'px');
+    previewScroll.style.setProperty('--pv-f', (w / slots) + 'px');
   }
   window.addEventListener('resize', syncPreviewWidth);
 
-  function setSimSize(size){
-    simSize = SIM_FONTS[size] ? size : 'm';
-    [].forEach.call(document.querySelectorAll('.size-seg .seg'), function(b){
-      b.classList.toggle('on', b.getAttribute('data-size') === simSize);
-    });
+  function setCpl(n){
+    cpl = Math.max(CPL_MIN, Math.min(CPL_MAX, Math.round(n)));
+    cplRange.value = cpl;
+    cplNum.textContent = '一行 ' + cpl + ' 字';
     syncPreviewWidth();
     save();
   }
-  [].forEach.call(document.querySelectorAll('.size-seg .seg'), function(b){
-    b.addEventListener('click', function(){ setSimSize(b.getAttribute('data-size')); });
-  });
+  cplRange.addEventListener('input', function(){ setCpl(parseFloat(cplRange.value)); });
 
   // ── 渲染右側預覽（隨時呼叫，不影響左側焦點） ──
   function renderPreview(){
@@ -587,7 +608,7 @@
   });
 
   load();
-  setSimSize(simSize);
+  setCpl(cpl);
   renderEditors();
   renderPreview();
 })();
